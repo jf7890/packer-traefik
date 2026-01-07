@@ -35,3 +35,13 @@ variable "vm_name" {
   type    = string
   default = "guacamole-mgmt"
 }
+
+variable "bridge_lan" {
+  type    = string
+  default = "nonet"
+}
+
+variable "vlan_tag" {
+  type    = string
+  default = "99"
+}

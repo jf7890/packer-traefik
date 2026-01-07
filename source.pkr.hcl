@@ -34,11 +34,11 @@ source "proxmox-iso" "alpine_docker" {
     format       = "raw"
   }
 
-  # Network (Chung VLAN Management hoặc Bridge thường)
   network_adapters {
-    model  = "virtio"
-    bridge = "vmbr0" # Sửa lại bridge nếu cần (vd: vmbr10 hoặc bridge quản trị)
-    firewall = false
+    model     = "virtio"
+    bridge    = var.bridge_lan
+    vlan_tag  = var.vlan_tag
+    firewall  = false
   }
 
   # HTTP Server phục vụ Answer File

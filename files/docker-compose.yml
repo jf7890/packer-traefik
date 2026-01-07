@@ -14,7 +14,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      # - "8080:8080" # Dashboard (Tắt khi ra production)
+      - "8080:8080" # Dashboard (Tắt khi ra production)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
@@ -38,11 +38,9 @@ services:
       PGDATA: /var/lib/postgresql/data/guacamole
       POSTGRES_DB: guacamole_db
       POSTGRES_USER: guac_user
-      # Mật khẩu database (Phải khớp với service guacamole dưới)
       POSTGRES_PASSWORD: 'MySuperSecretPassword123' 
     volumes:
-      # Mount script initdb đã tạo bởi Packer
-      - ./init:/docker-entrypoint-initdb.d:ro
+      - "initdb:/docker-entrypoint-initdb.d:ro"
       - guac_db_data:/var/lib/postgresql/data
     networks:
       - internal_net
@@ -72,12 +70,12 @@ services:
       POSTGRES_HOSTNAME: guac-postgres
       POSTGRES_DATABASE: guacamole_db
       POSTGRES_USER: guac_user
-      # --- FIX QUAN TRỌNG: Phải thêm dòng này ---
       POSTGRES_PASSWORD: 'MySuperSecretPassword123'
-      # ------------------------------------------
     networks:
       - internal_net
       - proxy_net
+    volumes:
+      - "initdb:/opt/guacamole/extensions/guacamole-auth-jdbc/postgresql/schema:ro"
     labels:
       - "traefik.enable=true"
       
@@ -105,3 +103,4 @@ networks:
 
 volumes:
   guac_db_data:
+  initdb:

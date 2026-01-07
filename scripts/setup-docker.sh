@@ -23,24 +23,25 @@ sleep 2
 echo "[+] Docker is ready!"
 
 # 3. Chuẩn bị thư mục project
-mkdir -p /opt/guacamole/init
+# mkdir -p /opt/guacamole/init
 
 # 4. Tạo init script cho Database Guacamole
-echo "[+] Generating Guacamole DB Schema..."
+# echo "[+] Generating Guacamole DB Schema..."
 
 # Thử pull trước để đảm bảo mạng ok
-docker pull guacamole/guacamole:latest
+# docker pull guacamole/guacamole:latest
 
 # Xuất schema (quan trọng nhất)
-docker run --rm guacamole/guacamole:latest /opt/guacamole/bin/initdb.sh --postgres > /opt/guacamole/init/initdb.sql
+#docker run --rm guacamole/guacamole:latest /opt/guacamole/bin/initdb.sh --postgres > /opt/guacamole/init/initdb.sql
+# docker run --rm guacamole/guacamole /opt/guacamole/bin/initdb.sh --postgresql > /opt/guacamole/init/initdb.sql
 
 # Kiểm tra xem file có dữ liệu không
-if [ -s /opt/guacamole/init/initdb.sql ]; then
-    echo "[OK] Schema created successfully."
-else
-    echo "[ERROR] Schema generation FAILED."
-    exit 1
-fi
+# if [ -s /opt/guacamole/init/initdb.sql ]; then
+    # echo "[OK] Schema created successfully."
+# else
+    # echo "[ERROR] Schema generation FAILED."
+    # exit 1
+# fi
 
 # 5. Cấu hình tự động chạy Docker Compose
 echo "[+] Configuring Auto-start..."

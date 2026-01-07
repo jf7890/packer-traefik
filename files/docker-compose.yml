@@ -1,41 +1,55 @@
 services:
-  # --- TRAEFIK ---
+  # ==========================================
+  # TRAEFIK (Reverse Proxy)
+  # ==========================================
   traefik:
     image: traefik:v3.0
     container_name: traefik
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    # Fix lỗi API Docker version cũ trên Alpine
+    environment:
+      - DOCKER_API_VERSION=1.44
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080" # Dashboard
+      # - "8080:8080" # Dashboard (Tắt khi ra production)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
-      - "--api.insecure=true"
+      - "--api.dashboard=false" # Tắt dashboard public
+      - "--api.insecure=true"   # Chỉ bật nội bộ nếu cần debug
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--log.level=ERROR"
     networks:
       - proxy_net
 
-  # --- GUACAMOLE DB ---
+  # ==========================================
+  # POSTGRES (Database)
+  # ==========================================
   guac-postgres:
     image: postgres:15-alpine
     container_name: guac_postgres
     restart: always
     environment:
-      POSTGRES_USER: guac_user
-      POSTGRES_PASSWORD: guac_password_change_me
+      PGDATA: /var/lib/postgresql/data/guacamole
       POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guac_user
+      # Mật khẩu database (Phải khớp với service guacamole dưới)
+      POSTGRES_PASSWORD: 'MySuperSecretPassword123' 
     volumes:
+      # Mount script initdb đã tạo bởi Packer
+      - ./init:/docker-entrypoint-initdb.d:ro
       - guac_db_data:/var/lib/postgresql/data
-      - ./init:/docker-entrypoint-initdb.d
     networks:
       - internal_net
 
-  # --- GUACD ---
+  # ==========================================
+  # GUACD (Backend Daemon)
+  # ==========================================
   guacd:
     image: guacamole/guacd
     container_name: guacd
@@ -43,7 +57,9 @@ services:
     networks:
       - internal_net
 
-  # --- GUACAMOLE WEB ---
+  # ==========================================
+  # GUACAMOLE (Frontend Web App)
+  # ==========================================
   guacamole:
     image: guacamole/guacamole
     container_name: guacamole
@@ -56,16 +72,30 @@ services:
       POSTGRES_HOSTNAME: guac-postgres
       POSTGRES_DATABASE: guacamole_db
       POSTGRES_USER: guac_user
-      POSTGRES_PASSWORD: guac_password_change_me
+      # --- FIX QUAN TRỌNG: Phải thêm dòng này ---
+      POSTGRES_PASSWORD: 'MySuperSecretPassword123'
+      # ------------------------------------------
     networks:
       - internal_net
       - proxy_net
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=proxy_net"
+      
+      # FIX LỖI 504: Chỉ định chính xác mạng (tên thư mục_tên mạng)
+      # Lưu ý: Packer copy vào /opt/guacamole -> Tên mạng sẽ là guacamole_proxy_net
+      - "traefik.docker.network=guacamole_proxy_net"
+      
+      # FIX LỖI ROUTING: Chỉ định port của Tomcat
+      - "traefik.http.services.guac.loadbalancer.server.port=8080"
+
+      # FIX LỖI 404: Redirect từ / vào /guacamole/
+      # (Cách đơn giản nhất: Chạy thẳng trên /guacamole)
       - "traefik.http.routers.guac.rule=PathPrefix(`/`)"
       - "traefik.http.routers.guac.entrypoints=web"
-      - "traefik.http.services.guac.loadbalancer.server.port=8080"
+      
+      # Middleware thêm prefix /guacamole nếu user gõ /
+      - "traefik.http.middlewares.add-guac-prefix.addprefix.prefix=/guacamole"
+      - "traefik.http.routers.guac.middlewares=add-guac-prefix"
 
 networks:
   proxy_net:

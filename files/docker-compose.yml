@@ -62,6 +62,7 @@ services:
       - proxy_net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=proxy_net"
       - "traefik.http.routers.guac.rule=PathPrefix(`/`)"
       - "traefik.http.routers.guac.entrypoints=web"
       - "traefik.http.services.guac.loadbalancer.server.port=8080"

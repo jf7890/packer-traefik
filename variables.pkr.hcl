@@ -64,7 +64,7 @@ variable "bridge_lan" {
 variable "vlan_tag" {
   description = "VLAN tag for network adapter"
   type        = string
-  default     = ""
+  default     = "99"
 }
 
 # VM CONFIG

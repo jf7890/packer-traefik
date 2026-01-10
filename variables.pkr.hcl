@@ -1,47 +1,75 @@
+# PROXMOX CONNECTION
 variable "proxmox_url" {
-  type = string
-  default = "https://192.168.1.100:8006/api2/json"
+  description = "Proxmox API endpoint URL"
+  type        = string
+  default     = "https://192.168.1.100:8006/api2/json"
 }
 
 variable "proxmox_username" {
-  type = string
-  default = "root@pam"
+  description = "API username (e.g., user@pam!token)"
+  type        = string
+  default     = "root@pam"
 }
 
 variable "proxmox_token" {
-  type      = string
-  sensitive = true
+  description = "API token in format token_id=token_secret"
+  type        = string
+  sensitive   = true
 }
 
 variable "proxmox_node" {
-  type    = string
-  default = "pve"
+  description = "Target Proxmox node name"
+  type        = string
+  default     = "pve"
 }
 
-# --- SSH Key Config ---
-variable "ssh_public_key" {
-  description = "Nội dung Public Key (để đưa vào máy ảo)"
+# STORAGE (read from ENV: PKR_VAR_xxx)
+variable "iso_storage_pool" {
+  description = "Storage pool for ISO images and templates"
   type        = string
-  # Ví dụ: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+  default     = "local"
+}
+
+variable "vm_storage_pool" {
+  description = "Storage pool for VM disks"
+  type        = string
+  default     = "local-lvm"
+}
+
+variable "cloudinit_storage_pool" {
+  description = "Storage pool for Cloud-init drive (defaults to vm_storage_pool)"
+  type        = string
+  default     = ""
+}
+
+# SSH KEY (read from ENV: PKR_VAR_xxx)
+variable "ssh_public_key" {
+  description = "SSH public key content for VM provisioning"
+  type        = string
 }
 
 variable "ssh_private_key_file" {
-  description = "Đường dẫn tới file Private Key (để Packer dùng SSH vào)"
+  description = "Path to SSH private key file"
   type        = string
   default     = "~/.ssh/id_ed25519"
 }
 
-variable "vm_name" {
-  type    = string
-  default = "guacamole-mgmt"
-}
-
+# NETWORK (read from ENV: PKR_VAR_xxx)
 variable "bridge_lan" {
-  type    = string
-  default = "nonet"
+  description = "LAN bridge (SDN Vnet) for internal lab network"
+  type        = string
+  default     = "nonet"
 }
 
 variable "vlan_tag" {
-  type    = string
-  default = "99"
+  description = "VLAN tag for network adapter"
+  type        = string
+  default     = "99"
+}
+
+# VM CONFIG
+variable "vm_name" {
+  description = "Name of the VM during build"
+  type        = string
+  default     = "guacamole-mgmt"
 }

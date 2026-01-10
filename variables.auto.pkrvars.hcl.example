@@ -1,10 +1,29 @@
-proxmox_url           = "https://10.10.100.1:8006/api2/json"
-proxmox_username      = "username@pve!token"
-proxmox_token         = "UUID"
-proxmox_node          = "homelab"
+# ==========================================
+# PROXMOX CONNECTION
+# ==========================================
+proxmox_url      = "https://10.10.100.1:8006/api2/json"
+proxmox_username = "username@pve!token"
+proxmox_token    = "UUID"
+proxmox_node     = "homelab"
 
-ssh_public_key        = "ssh-ed25519 AAAAC..........."
-ssh_private_key_file  = "/tmp/ssh/pri_key"
+# ==========================================
+# STORAGE
+# Or set ENV: PKR_VAR_iso_storage_pool, PKR_VAR_vm_storage_pool
+# ==========================================
+# iso_storage_pool      = "local"
+# vm_storage_pool       = "local-lvm"
+# cloudinit_storage_pool = ""  # If empty, use vm_storage_pool
 
-bridge_wan            = "vmbr10"
-bridge_lan            = "nonet"
+# ==========================================
+# SSH KEY
+# Or set ENV: PKR_VAR_ssh_public_key, PKR_VAR_ssh_private_key_file
+# ==========================================
+ssh_public_key       = "ssh-ed25519 AAAAC..........."
+ssh_private_key_file = "/tmp/ssh/pri_key"
+
+# ==========================================
+# NETWORK (Guacamole chỉ cần LAN)
+# Or set ENV: PKR_VAR_bridge_lan
+# ==========================================
+bridge_lan = "nonet"
+# vlan_tag = "99"  # optional

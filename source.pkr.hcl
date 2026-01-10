@@ -1,5 +1,11 @@
+# Calculate the actual value for cloudinit_storage_pool
+locals {
+  # If cloudinit_storage_pool is empty, use vm_storage_pool.
+  cloudinit_storage = var.cloudinit_storage_pool != "" ? var.cloudinit_storage_pool : var.vm_storage_pool
+}
+
 source "proxmox-iso" "alpine_docker" {
-  # Kết nối Proxmox
+  # Connect Proxmox
   proxmox_url              = var.proxmox_url
   username                 = var.proxmox_username
   token                    = var.proxmox_token
@@ -11,44 +17,45 @@ source "proxmox-iso" "alpine_docker" {
     type             = "scsi"
     iso_url          = "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/alpine-virt-3.23.2-x86_64.iso"
     iso_checksum     = "file:https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/alpine-virt-3.23.2-x86_64.iso.sha256"
-    iso_storage_pool = "local"
-    iso_download_pve = false
+    iso_storage_pool = var.iso_storage_pool
+    iso_download_pve = true
     unmount          = true
   }
 
-  # Hardware (Tăng RAM/Disk cho Docker)
-  vm_name         = var.vm_name
-  template_name   = "tpl-guacamole"
+  # Hardware (Up RAM/Disk for Docker)
+  vm_name              = var.vm_name
+  template_name        = "tpl-guacamole"
   template_description = "Alpine Docker Host (Traefik + Guacamole)"
-  memory          = 2048   # 2GB RAM
-  cores           = 2
-  sockets         = 1
-  scsi_controller = "virtio-scsi-single"
-  qemu_agent      = true
+  memory               = 2048   # 2GB RAM
+  cores                = 2
+  sockets              = 1
+  scsi_controller      = "virtio-scsi-single"
+  qemu_agent           = true
   
   # Disk 10GB
   disks {
     type         = "scsi"
     disk_size    = "10G"
-    storage_pool = "local-lvm"
+    storage_pool = var.vm_storage_pool
     format       = "raw"
   }
 
+  # Network (just use LAN bridge for Guacamole)
   network_adapters {
-    model     = "virtio"
-    bridge    = var.bridge_lan
-    vlan_tag  = var.vlan_tag
-    firewall  = false
+    model    = "virtio"
+    bridge   = var.bridge_lan
+    vlan_tag = var.vlan_tag
+    firewall = false
   }
 
-  # HTTP Server phục vụ Answer File
+  # HTTP Server serves Answer File
   http_content = {
     "/answers" = templatefile("http/answers.pkrtpl.hcl", {
       ssh_public_key = var.ssh_public_key
     })
   }
 
-  # Boot Command (Giống hệt Router)
+  # Boot Command
   boot_wait = "10s"
   boot_command = [
     "<enter><wait>",
@@ -66,5 +73,5 @@ source "proxmox-iso" "alpine_docker" {
 
   # Cloud-init
   cloud_init              = true
-  cloud_init_storage_pool = "local-lvm"
+  cloud_init_storage_pool = local.cloudinit_storage
 }

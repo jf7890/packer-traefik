@@ -1,14 +1,11 @@
 KEYMAPOPTS="us us"
-HOSTNAMEOPTS="-n cyberrange-router"
-# Networking: eth0 DHCP, eth1 manual (để dành cho VLAN)
+HOSTNAMEOPTS="-n guacamole"
+# Networking: eth0 DHCP (để Packer SSH vào)
 INTERFACESOPTS="auto lo
 iface lo inet loopback
 
 auto eth0
 iface eth0 inet dhcp
-
-auto eth1
-iface eth1 inet manual
 "
 
 DNSOPTS="-d 8.8.8.8"

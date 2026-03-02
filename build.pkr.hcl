@@ -12,8 +12,8 @@
   }
 
   provisioner "file" {
-    source      = "files/dynamic_conf/"
-    destination = "/opt/traefik/dynamic_conf/"
+    source      = "files/dynamic_conf"
+    destination = "/opt/traefik"
   }
 
   provisioner "file" {

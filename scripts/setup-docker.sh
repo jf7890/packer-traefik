@@ -24,7 +24,7 @@ sleep 2
 echo "[+] Docker is ready!"
 
 # 3. Ensure project directory exists
-mkdir -p /opt/traefik
+mkdir -p /opt/traefik/dynamic_conf
 
 # 4. Configure auto-start
 echo "[+] Configuring Auto-start..."

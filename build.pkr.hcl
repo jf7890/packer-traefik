@@ -3,7 +3,7 @@
 
   # 1. Upload docker-compose
   provisioner "shell" {
-    inline = ["mkdir -p /opt/traefik"]
+    inline = ["mkdir -p /opt/traefik/dynamic_conf"]
   }
 
   provisioner "file" {

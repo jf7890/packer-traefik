@@ -5,6 +5,7 @@
 # ==============================================================================
 # Usage:
 #   ./manage-proxy.sh add <domain> <url> <verify_tls: true|false>
+#   ./manage-proxy.sh add_nginx_dashboard <domain> <frontend_url> <backend_url> <verify_tls: true|false>
 #   ./manage-proxy.sh del <domain>
 #
 # Example:
@@ -23,13 +24,19 @@ mkdir -p "$CONFIG_DIR"
 
 # Show usage
 show_help() {
-    echo "Usage: $0 {add|del} [arguments]"
+    echo "Usage: $0 {add|add_nginx_dashboard|del} [arguments]"
     echo ""
     echo "Commands:"
     echo "  add <domain> <target_url> [verify_tls]"
     echo "      domain:     Domain name (e.g., app.local)"
     echo "      target_url: Destination URL (e.g., http://10.0.0.5:8080)"
     echo "      verify_tls: (Optional) true/false. Default: true"
+    echo ""
+    echo "  add_nginx_dashboard <domain> <frontend_url> <backend_url> [verify_tls]"
+    echo "      domain:        Domain name (e.g., app.local)"
+    echo "      frontend_url:  Frontend URL (e.g., http://10.0.0.5:8080)"
+    echo "      backend_url:   Backend URL for /api (e.g., http://10.0.0.6:3001)"
+    echo "      verify_tls:    (Optional) true/false. Default: true"
     echo ""
     echo "  del <domain>"
     echo "      Remove configuration for the specific domain"
@@ -40,6 +47,15 @@ show_help() {
 # Normalize filename from domain (replace dots with underscores)
 sanitize_filename() {
     echo "$1" | sed 's/\./_/g'
+}
+
+# Ensure scheme (http/https). If only host:port given, default to http.
+normalize_url() {
+    local url="$1"
+    if [[ "$url" != http* ]]; then
+        url="http://$url"
+    fi
+    echo "$url"
 }
 
 # ==============================================================================
@@ -66,10 +82,7 @@ case "$ACTION" in
         FILENAME=$(sanitize_filename "$DOMAIN")
         FILEPATH="$CONFIG_DIR/${FILENAME}.yml"
 
-        # Ensure scheme (http/https). If only host:port given, default to http.
-        if [[ "$TARGET" != http* ]]; then
-            TARGET="http://$TARGET"
-        fi
+        TARGET=$(normalize_url "$TARGET")
 
         echo "[INFO] Generating config for $DOMAIN -> $TARGET (Verify TLS: $VERIFY_TLS)..."
 
@@ -88,6 +101,63 @@ http:
       loadBalancer:
         servers:
           - url: "${TARGET}"
+        serversTransport: "transport-${FILENAME}"
+
+  serversTransports:
+    transport-${FILENAME}:
+      insecureSkipVerify: $( [ "$VERIFY_TLS" == "false" ] && echo "true" || echo "false" )
+EOF
+
+        echo "[SUCCESS] Created config at: $FILEPATH"
+        ;;
+
+    "add_nginx_dashboard")
+        DOMAIN=$2
+        FRONTEND=$3
+        BACKEND=$4
+        VERIFY_TLS=${5:-true} # Default true if not provided
+
+        if [ -z "$DOMAIN" ] || [ -z "$FRONTEND" ] || [ -z "$BACKEND" ]; then
+            echo "[ERROR] Missing domain, frontend URL, or backend URL."
+            show_help
+        fi
+
+        FILENAME=$(sanitize_filename "$DOMAIN")
+        FILEPATH="$CONFIG_DIR/${FILENAME}.yml"
+
+        FRONTEND=$(normalize_url "$FRONTEND")
+        BACKEND=$(normalize_url "$BACKEND")
+
+        echo "[INFO] Generating config for $DOMAIN -> frontend $FRONTEND, backend $BACKEND (Verify TLS: $VERIFY_TLS)..."
+
+cat > "$FILEPATH" <<EOF
+http:
+  routers:
+    router-${FILENAME}-api:
+      rule: "Host(\`${DOMAIN}\`) && PathPrefix(\`/api\`)"
+      service: "service-${FILENAME}-api"
+      entryPoints:
+        - "web"
+      priority: 100
+
+    router-${FILENAME}:
+      rule: "Host(\`${DOMAIN}\`)"
+      service: "service-${FILENAME}"
+      entryPoints:
+        - "web"
+      priority: 1
+
+  services:
+    service-${FILENAME}:
+      loadBalancer:
+        servers:
+          - url: "${FRONTEND}"
+        serversTransport: "transport-${FILENAME}"
+
+    service-${FILENAME}-api:
+      loadBalancer:
+        servers:
+          - url: "${BACKEND}"
         serversTransport: "transport-${FILENAME}"
 
   serversTransports:

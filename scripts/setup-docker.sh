@@ -23,8 +23,14 @@ sleep 2
 
 echo "[+] Docker is ready!"
 
-# 3. Ensure project directory exists
+# 3. Ensure project directories exist
 mkdir -p /opt/traefik/dynamic_conf
+mkdir -p /opt/qdrant/storage
+
+# 3.1 Pre-pull images so cloned VMs don't wait on downloads
+echo "[+] Pre-pulling Docker images..."
+cd /opt/traefik
+docker compose -f /opt/traefik/docker-compose.yml pull
 
 # 4. Configure auto-start
 echo "[+] Configuring Auto-start..."

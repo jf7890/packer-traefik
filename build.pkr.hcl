@@ -21,6 +21,11 @@
     destination = "/usr/local/bin/proxy-ctl"
   }
 
+  provisioner "file" {
+    source      = "scripts/setup-stack.sh"
+    destination = "/usr/local/bin/setup"
+  }
+
   provisioner "shell" {
     script = "scripts/setup-docker.sh"
   }

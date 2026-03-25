@@ -5,13 +5,16 @@ set -eu
 PROJECT_DIR="/opt/traefik"
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
 DOWNLOAD_DIR="/opt/qdrant/bootstrap"
+CONTAINER_SNAPSHOT_DIR="/qdrant/snapshots"
 QDRANT_URL="http://127.0.0.1:6333"
 QDRANT_API_KEY="${QDRANT_BUILD_API_KEY:-build-time-placeholder}"
 SNAPSHOT_URL="https://raw.githubusercontent.com/jf7890/qdrant_snapshot/main/waf_payloads_jina-2026-03-22.snapshot"
-COLLECTION_NAME="waf_payloads_jina"
+COLLECTION_NAME="waf_payloads"
 SNAPSHOT_CHECKSUM="60A523614F6E090C7A38A31E3C9CB869D43B03BBFFD667698814B4F0DC60473A"
 SNAPSHOT_FILE_NAME=""
 DOWNLOAD_PATH=""
+CONTAINER_SNAPSHOT_PATH=""
+RESTORE_RESPONSE_FILE="/tmp/qdrant-restore-response.json"
 DOCKER_WAS_STARTED=0
 DOCKER_SERVICE_STARTED=0
 
@@ -54,7 +57,7 @@ wait_for_collection() {
         i=$((i + 1))
     done
 
-    echo "[ERROR] Collection '$COLLECTION_NAME' was not available after snapshot upload."
+    echo "[ERROR] Collection '$COLLECTION_NAME' was not available after snapshot restore."
     exit 1
 }
 
@@ -70,6 +73,10 @@ cleanup() {
     if [ -n "$DOWNLOAD_PATH" ] && [ -f "$DOWNLOAD_PATH" ]; then
         rm -f "$DOWNLOAD_PATH"
     fi
+
+    if [ -f "$RESTORE_RESPONSE_FILE" ]; then
+        rm -f "$RESTORE_RESPONSE_FILE"
+    fi
 }
 
 trap cleanup EXIT
@@ -84,6 +91,7 @@ fi
 
 mkdir -p "$DOWNLOAD_DIR" /opt/qdrant/storage
 DOWNLOAD_PATH="$DOWNLOAD_DIR/$SNAPSHOT_FILE_NAME"
+CONTAINER_SNAPSHOT_PATH="$CONTAINER_SNAPSHOT_DIR/$SNAPSHOT_FILE_NAME"
 
 echo "[+] Downloading Qdrant snapshot from $SNAPSHOT_URL..."
 curl -fL --retry 3 --retry-delay 2 "$SNAPSHOT_URL" -o "$DOWNLOAD_PATH"
@@ -106,16 +114,31 @@ DOCKER_WAS_STARTED=1
 echo "[+] Waiting for Qdrant API..."
 wait_for_qdrant
 
-RESTORE_URL="$QDRANT_URL/collections/$COLLECTION_NAME/snapshots/upload?priority=snapshot"
-if [ -n "$SNAPSHOT_CHECKSUM" ]; then
-    RESTORE_URL="$RESTORE_URL&checksum=$SNAPSHOT_CHECKSUM"
-fi
+RESTORE_URL="$QDRANT_URL/collections/$COLLECTION_NAME/snapshots/recover?wait=true"
 
-echo "[+] Restoring collection '$COLLECTION_NAME' from uploaded snapshot..."
-curl -fsS -X POST \
-    -H "api-key: $QDRANT_API_KEY" \
-    -F "snapshot=@$DOWNLOAD_PATH" \
-    "$RESTORE_URL" >/dev/null
+echo "[+] Restoring collection '$COLLECTION_NAME' from snapshot file..."
+HTTP_STATUS=$(
+    cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
+        -H "api-key: $QDRANT_API_KEY" \
+        -H "Content-Type: application/json" \
+        "$RESTORE_URL" \
+        --data-binary @-
+{
+  "location": "file://$CONTAINER_SNAPSHOT_PATH",
+  "priority": "snapshot",
+  "checksum": "$SNAPSHOT_CHECKSUM"
+}
+EOF
+)
+
+if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+    echo "[ERROR] Qdrant restore failed with HTTP $HTTP_STATUS."
+    if [ -f "$RESTORE_RESPONSE_FILE" ]; then
+        cat "$RESTORE_RESPONSE_FILE"
+        echo
+    fi
+    exit 1
+fi
 
 echo "[+] Verifying restored collection..."
 wait_for_collection

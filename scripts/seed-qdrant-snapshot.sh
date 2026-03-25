@@ -66,7 +66,7 @@ wait_for_collection() {
 
 resolve_snapshot_checksum() {
     echo "[+] Looking for snapshot checksum at $CHECKSUM_URL..."
-    if ! curl -fsSL --retry 3 --retry-delay 2 "$CHECKSUM_URL" -o "$CHECKSUM_FILE"; then
+    if ! curl -fsSL --retry 3 --retry-delay 2 "$CHECKSUM_URL" -o "$CHECKSUM_FILE" 2>/dev/null; then
         echo "[!] No CHECKSUM file found. Skipping checksum verification."
         return 0
     fi
@@ -133,7 +133,7 @@ repack_directory_to_tar() {
 }
 
 normalize_snapshot_archive() {
-    WORK_DIR=$(mktemp -d /tmp/qdrant-snapshot.XXXXXX)
+    WORK_DIR=$(mktemp -d "$DOWNLOAD_DIR/qdrant-snapshot.XXXXXX")
     OUTER_DIR="$WORK_DIR/original"
     INNER_BASE_DIR="$WORK_DIR/segments"
     NORMALIZED_PATH="$WORK_DIR/normalized.snapshot"

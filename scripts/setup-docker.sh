@@ -6,7 +6,7 @@ chmod +x /usr/local/bin/setup
 # 1. Install Docker and Compose
 echo "[+] Installing Docker..."
 apk update
-apk add docker docker-cli-compose bash
+apk add docker docker-cli-compose bash curl
 
 # 2. Enable Docker service
 rc-update add docker default

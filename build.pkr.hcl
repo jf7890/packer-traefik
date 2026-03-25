@@ -31,6 +31,10 @@
   }
 
   provisioner "shell" {
+    script = "scripts/seed-qdrant-snapshot.sh"
+  }
+
+  provisioner "shell" {
     script = "scripts/set-static-ip.sh"
   }
 }

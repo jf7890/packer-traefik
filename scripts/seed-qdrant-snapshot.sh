@@ -10,10 +10,12 @@ QDRANT_URL="http://127.0.0.1:6333"
 QDRANT_API_KEY="${QDRANT_BUILD_API_KEY:-build-time-placeholder}"
 SNAPSHOT_URL="https://raw.githubusercontent.com/jf7890/qdrant_snapshot/main/waf_payloads_jina-2026-03-22.snapshot"
 COLLECTION_NAME="waf_payloads"
-SNAPSHOT_CHECKSUM="60A523614F6E090C7A38A31E3C9CB869D43B03BBFFD667698814B4F0DC60473A"
 SNAPSHOT_FILE_NAME=""
+CHECKSUM_URL=""
+SNAPSHOT_CHECKSUM=""
 DOWNLOAD_PATH=""
 CONTAINER_SNAPSHOT_PATH=""
+CHECKSUM_FILE="/tmp/qdrant-snapshot-checksum.txt"
 RESTORE_RESPONSE_FILE="/tmp/qdrant-restore-response.json"
 DOCKER_WAS_STARTED=0
 DOCKER_SERVICE_STARTED=0
@@ -61,6 +63,53 @@ wait_for_collection() {
     exit 1
 }
 
+resolve_snapshot_checksum() {
+    echo "[+] Looking for snapshot checksum at $CHECKSUM_URL..."
+    if ! curl -fsSL --retry 3 --retry-delay 2 "$CHECKSUM_URL" -o "$CHECKSUM_FILE"; then
+        echo "[!] No CHECKSUM file found. Skipping checksum verification."
+        return 0
+    fi
+
+    SNAPSHOT_CHECKSUM=$(
+        awk -v file="$SNAPSHOT_FILE_NAME" '
+            {
+                gsub(/\r$/, "", $0)
+            }
+
+            /^[[:space:]]*#/ || /^[[:space:]]*$/ {
+                next
+            }
+
+            index($0, ":") > 0 {
+                name = substr($0, 1, index($0, ":") - 1)
+                checksum = substr($0, index($0, ":") + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", checksum)
+                if (name == file) {
+                    print checksum
+                    exit
+                }
+            }
+
+            {
+                line = $0
+                sub(/^[[:space:]]+/, "", line)
+                split(line, parts, /[[:space:]]+/)
+                if (length(parts[1]) > 0 && parts[2] == file) {
+                    print parts[1]
+                    exit
+                }
+            }
+        ' "$CHECKSUM_FILE"
+    )
+
+    if [ -n "$SNAPSHOT_CHECKSUM" ]; then
+        echo "[+] Loaded checksum for $SNAPSHOT_FILE_NAME from CHECKSUM file."
+    else
+        echo "[!] No checksum entry for $SNAPSHOT_FILE_NAME. Skipping checksum verification."
+    fi
+}
+
 cleanup() {
     if [ "$DOCKER_WAS_STARTED" -eq 1 ]; then
         QDRANT_API_KEY="$QDRANT_API_KEY" docker compose -f "$COMPOSE_FILE" down >/dev/null 2>&1 || true
@@ -72,6 +121,10 @@ cleanup() {
 
     if [ -n "$DOWNLOAD_PATH" ] && [ -f "$DOWNLOAD_PATH" ]; then
         rm -f "$DOWNLOAD_PATH"
+    fi
+
+    if [ -f "$CHECKSUM_FILE" ]; then
+        rm -f "$CHECKSUM_FILE"
     fi
 
     if [ -f "$RESTORE_RESPONSE_FILE" ]; then
@@ -89,12 +142,16 @@ if [ -z "$SNAPSHOT_FILE_NAME" ]; then
     SNAPSHOT_FILE_NAME="${COLLECTION_NAME}.snapshot"
 fi
 
+CHECKSUM_URL="${SNAPSHOT_URL%/*}/CHECKSUM"
+
 mkdir -p "$DOWNLOAD_DIR" /opt/qdrant/storage
 DOWNLOAD_PATH="$DOWNLOAD_DIR/$SNAPSHOT_FILE_NAME"
 CONTAINER_SNAPSHOT_PATH="$CONTAINER_SNAPSHOT_DIR/$SNAPSHOT_FILE_NAME"
 
 echo "[+] Downloading Qdrant snapshot from $SNAPSHOT_URL..."
 curl -fL --retry 3 --retry-delay 2 "$SNAPSHOT_URL" -o "$DOWNLOAD_PATH"
+
+resolve_snapshot_checksum
 
 if [ -n "$SNAPSHOT_CHECKSUM" ]; then
     echo "[+] Verifying snapshot checksum..."
@@ -117,19 +174,34 @@ wait_for_qdrant
 RESTORE_URL="$QDRANT_URL/collections/$COLLECTION_NAME/snapshots/recover?wait=true"
 
 echo "[+] Restoring collection '$COLLECTION_NAME' from snapshot file..."
-HTTP_STATUS=$(
-    cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
-        -H "api-key: $QDRANT_API_KEY" \
-        -H "Content-Type: application/json" \
-        "$RESTORE_URL" \
-        --data-binary @-
+if [ -n "$SNAPSHOT_CHECKSUM" ]; then
+    HTTP_STATUS=$(
+        cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
+            -H "api-key: $QDRANT_API_KEY" \
+            -H "Content-Type: application/json" \
+            "$RESTORE_URL" \
+            --data-binary @-
 {
   "location": "file://$CONTAINER_SNAPSHOT_PATH",
   "priority": "snapshot",
   "checksum": "$SNAPSHOT_CHECKSUM"
 }
 EOF
-)
+    )
+else
+    HTTP_STATUS=$(
+        cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
+            -H "api-key: $QDRANT_API_KEY" \
+            -H "Content-Type: application/json" \
+            "$RESTORE_URL" \
+            --data-binary @-
+{
+  "location": "file://$CONTAINER_SNAPSHOT_PATH",
+  "priority": "snapshot"
+}
+EOF
+    )
+fi
 
 if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
     echo "[ERROR] Qdrant restore failed with HTTP $HTTP_STATUS."

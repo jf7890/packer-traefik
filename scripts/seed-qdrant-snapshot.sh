@@ -17,6 +17,7 @@ DOWNLOAD_PATH=""
 CONTAINER_SNAPSHOT_PATH=""
 CHECKSUM_FILE="/tmp/qdrant-snapshot-checksum.txt"
 RESTORE_RESPONSE_FILE="/tmp/qdrant-restore-response.json"
+WORK_DIR=""
 DOCKER_WAS_STARTED=0
 DOCKER_SERVICE_STARTED=0
 
@@ -110,6 +111,56 @@ resolve_snapshot_checksum() {
     fi
 }
 
+normalize_tar_archive() {
+    archive_path="$1"
+    extract_dir="$2"
+
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+    tar -xf "$archive_path" -C "$extract_dir"
+}
+
+repack_directory_to_tar() {
+    source_dir="$1"
+    target_path="$2"
+
+    rm -f "$target_path"
+    (
+        cd "$source_dir"
+        set -- *
+        tar --format=posix -cf "$target_path" "$@"
+    )
+}
+
+normalize_snapshot_archive() {
+    WORK_DIR=$(mktemp -d /tmp/qdrant-snapshot.XXXXXX)
+    OUTER_DIR="$WORK_DIR/original"
+    INNER_BASE_DIR="$WORK_DIR/segments"
+    NORMALIZED_PATH="$WORK_DIR/normalized.snapshot"
+
+    echo "[+] Normalizing snapshot tar format for Qdrant compatibility..."
+    normalize_tar_archive "$DOWNLOAD_PATH" "$OUTER_DIR"
+
+    if [ -d "$OUTER_DIR/0/segments" ]; then
+        for segment_tar in "$OUTER_DIR"/0/segments/*.tar; do
+            [ -f "$segment_tar" ] || continue
+
+            segment_name=$(basename "$segment_tar" .tar)
+            segment_dir="$INNER_BASE_DIR/$segment_name"
+            segment_repacked="$INNER_BASE_DIR/$segment_name.tar"
+
+            mkdir -p "$INNER_BASE_DIR"
+            normalize_tar_archive "$segment_tar" "$segment_dir"
+            repack_directory_to_tar "$segment_dir" "$segment_repacked"
+            mv "$segment_repacked" "$segment_tar"
+        done
+    fi
+
+    repack_directory_to_tar "$OUTER_DIR" "$NORMALIZED_PATH"
+
+    mv "$NORMALIZED_PATH" "$DOWNLOAD_PATH"
+}
+
 cleanup() {
     if [ "$DOCKER_WAS_STARTED" -eq 1 ]; then
         QDRANT_API_KEY="$QDRANT_API_KEY" docker compose -f "$COMPOSE_FILE" down >/dev/null 2>&1 || true
@@ -129,6 +180,10 @@ cleanup() {
 
     if [ -f "$RESTORE_RESPONSE_FILE" ]; then
         rm -f "$RESTORE_RESPONSE_FILE"
+    fi
+
+    if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+        rm -rf "$WORK_DIR"
     fi
 }
 
@@ -158,6 +213,8 @@ if [ -n "$SNAPSHOT_CHECKSUM" ]; then
     printf '%s  %s\n' "$SNAPSHOT_CHECKSUM" "$DOWNLOAD_PATH" | sha256sum -c -
 fi
 
+normalize_snapshot_archive
+
 echo "[+] Starting Docker for Qdrant seed..."
 service docker start >/dev/null 2>&1 || true
 DOCKER_SERVICE_STARTED=1
@@ -174,34 +231,18 @@ wait_for_qdrant
 RESTORE_URL="$QDRANT_URL/collections/$COLLECTION_NAME/snapshots/recover?wait=true"
 
 echo "[+] Restoring collection '$COLLECTION_NAME' from snapshot file..."
-if [ -n "$SNAPSHOT_CHECKSUM" ]; then
-    HTTP_STATUS=$(
-        cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
-            -H "api-key: $QDRANT_API_KEY" \
-            -H "Content-Type: application/json" \
-            "$RESTORE_URL" \
-            --data-binary @-
-{
-  "location": "file://$CONTAINER_SNAPSHOT_PATH",
-  "priority": "snapshot",
-  "checksum": "$SNAPSHOT_CHECKSUM"
-}
-EOF
-    )
-else
-    HTTP_STATUS=$(
-        cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
-            -H "api-key: $QDRANT_API_KEY" \
-            -H "Content-Type: application/json" \
-            "$RESTORE_URL" \
-            --data-binary @-
+HTTP_STATUS=$(
+    cat <<EOF | curl -sS -o "$RESTORE_RESPONSE_FILE" -w "%{http_code}" -X PUT \
+        -H "api-key: $QDRANT_API_KEY" \
+        -H "Content-Type: application/json" \
+        "$RESTORE_URL" \
+        --data-binary @-
 {
   "location": "file://$CONTAINER_SNAPSHOT_PATH",
   "priority": "snapshot"
 }
 EOF
-    )
-fi
+)
 
 if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
     echo "[ERROR] Qdrant restore failed with HTTP $HTTP_STATUS."
